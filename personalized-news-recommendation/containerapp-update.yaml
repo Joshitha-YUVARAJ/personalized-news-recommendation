@@ -1,0 +1,27 @@
+properties:
+  template:
+    containers:
+    - name: snr-api
+      image: snracr25980.azurecr.io/smart-news-api:ca71775337a005a456f3c44432a401dcd1ef1fed
+      env:
+      - name: ENV
+        value: prod
+      - name: HOST
+        value: 0.0.0.0
+      - name: PORT
+        value: "8000"
+      - name: CORS_ORIGINS
+        value: https://witty-bush-000a13f1e.1.azurestaticapps.net,https://localhost:5173,http://localhost:5173
+      - name: DATASET_DIR
+        value: /mnt/dataset/MINDsmall_train
+      - name: AZURE_STORAGE_ACCOUNT
+        value: snrdataset2024
+      - name: AZURE_STORAGE_KEY
+        value: PLACEHOLDER_KEY
+      volumeMounts:
+      - volumeName: dataset-volume
+        mountPath: /mnt/dataset
+    volumes:
+    - name: dataset-volume
+      storageType: AzureFile
+      storageName: minddata

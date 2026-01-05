@@ -1,0 +1,70 @@
+name: api-docker-aca
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - "server/**"
+      - "utils/**"
+      - ".github/workflows/api-docker-aca.yml"
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      IMAGE_NAME: smart-news-api
+    steps:
+      - uses: actions/checkout@v4
+
+      # 1) Login to Azure via OIDC
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # 2) Ensure required CLI extensions/providers for Container Apps
+      - name: Install containerapp extension & register providers
+        run: |
+          az extension add -n containerapp --upgrade -y || az extension update -n containerapp
+          az provider register --namespace Microsoft.App
+          az provider register --namespace Microsoft.OperationalInsights
+          az version
+          az containerapp env list -g ${{ secrets.RESOURCE_GROUP }} || true
+
+      # 3) Tag the image with commit SHA (no :latest)
+      - name: Set image tag
+        run: echo "IMAGE_TAG=${{ github.sha }}" >> $GITHUB_ENV
+
+      # 4) Login to ACR
+      - name: ACR login
+        run: |
+          az acr login --name ${{ secrets.ACR_NAME }}
+          az acr show -n ${{ secrets.ACR_NAME }} -o table
+
+      # 5) Build & Push (NOTE: build context is repo root, Dockerfile in server/)
+      - name: Build & Push image to ACR
+        run: |
+          IMAGE=${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+          docker build -f server/Dockerfile -t $IMAGE .
+          docker push $IMAGE
+
+      # 6) Update Container App to the new image and set env
+      - name: Update Container App to new image
+        run: |
+          az containerapp update \
+            -g ${{ secrets.RESOURCE_GROUP }} \
+            -n ${{ secrets.CONTAINERAPP_NAME }} \
+            --image $IMAGE \
+            --set-env-vars ENV=prod HOST=0.0.0.0 PORT=8000
+
+      # 7) Show revision & FQDN for quick debugging
+      - name: Show Container App status
+        run: |
+          az containerapp show -g ${{ secrets.RESOURCE_GROUP }} -n ${{ secrets.CONTAINERAPP_NAME }} \
+            --query "{fqdn:properties.configuration.ingress.fqdn,latest:properties.latestRevisionName}" -o table

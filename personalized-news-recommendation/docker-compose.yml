@@ -1,0 +1,22 @@
+services:
+  api:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    env_file:
+      - server/.env
+    volumes:
+      - ./dataset:/app/dataset:ro
+      - ./utils:/app/utils:ro
+    ports:
+      - "8000:8000"
+    command: ["/app/startup.sh"]
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    environment:
+      - VITE_API_BASE=http://localhost:8000
+    ports:
+      - "5173:5173"
